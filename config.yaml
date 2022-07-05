@@ -18,7 +18,7 @@ light_direction : "random"  # help=' if rendering a mesh, apply random light dir
 cull_backfaces : false  # help='cull back_faces ( remove them from the image) '
 points_radius : 0.006  # help='the size of the rendered points if `pc_rendering` is True  '
 points_per_pixel : 1  # help='max number of points in every rendered pixel if `pc_rendering` is True '
-faces_per_pixel : 1  # help='max number of faces in every rendered pixel if `pc_rendering` is False '
+faces_per_pixel : 2  # help='max number of faces in every rendered pixel if `pc_rendering` is False '
 background_color : "white" # help='the color of the background of the rendered images' ["white", "random", "black", "red", "green", "blue", "custom"]
 canonical_elevation : 30.0  # help='if views_config== canoncal , the elevation of the view points is givene by this angle'
 canonical_distance : 2.2  # help='the distnace of the view points from the center if the object  '

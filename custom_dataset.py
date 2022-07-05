@@ -440,6 +440,88 @@ class ShapeNetCore(ShapeNetBase):
         return self.label_by_number[label_str], mesh, points
 
 
+class Pix3D(ShapeNetBase):
+    def __init__(self, data_dir, split, nb_points, synsets=None, version: int = 2, 
+                load_textures: bool = False, texture_resolution: int = 4, dset_norm: str = "inf", simplified_mesh=False):
+        super().__init__()
+        self.shapenet_dir = data_dir
+        self.nb_points = nb_points
+        self.load_textures = load_textures
+        self.texture_resolution = texture_resolution
+        self.dset_norm = dset_norm
+        self.split = split
+        self.simplified_mesh = simplified_mesh
+        self.model_dir = "model.obj"
+        self.pix3d_dir = path.join(data_dir, "model")
+        
+        data_dir = path.join(data_dir, "model")
+        
+        synset_set = {
+                synset
+                for synset in os.listdir(data_dir)
+                if path.isdir(path.join(data_dir, synset))
+            }
+        
+        # Not using the 'misc' category for this project
+        synset_set.remove("misc")
+        
+        self.classes = sorted(list(synset_set))
+        self.label_by_number = {k: v for v, k in enumerate(self.classes)}
+        
+        for synset in synset_set:
+            self.synset_start_idxs[synset] = len(self.synset_ids)
+            for model in os.listdir(path.join(data_dir, synset)):
+                if not path.exists(path.join(data_dir, synset, model, self.model_dir)):
+                    msg = (
+                        "Object file not found in the model directory %s "
+                        "under synset directory %s."
+                    ) % (model, synset)
+
+                    continue
+                self.synset_ids.append(synset)
+                self.model_ids.append(model)
+            model_count = len(self.synset_ids) - self.synset_start_idxs[synset]
+            self.synset_num_models[synset] = model_count
+        self.model_ids, self.synset_ids = sort_jointly(
+            [self.model_ids, self.synset_ids], dim=0)
+        
+        
+    def __getitem__(self, idx: int) -> Dict:
+        """
+        Read a model by the given index.
+        Args:
+            idx: The idx of the model to be retrieved in the dataset.
+        Returns:
+            dictionary with following keys:
+            - verts: FloatTensor of shape (V, 3).
+            - faces: LongTensor of shape (F, 3) which indexes into the verts tensor.
+            - synset_id (str): synset id
+            - model_id (str): model id
+            - label (str): synset label.
+        """
+        model = self._get_item_ids(idx)
+        model_path = path.join(
+            self.pix3d_dir, model["synset_id"], model["model_id"], self.model_dir
+        )
+        verts, faces, textures = self._load_mesh(model_path)
+        label_str = model["synset_id"]
+
+        verts = torch_center_and_normalize(
+            verts.to(torch.float), p=self.dset_norm)
+
+        verts_rgb = torch.ones_like(verts)[None]
+        textures = Textures(verts_rgb=verts_rgb)
+        mesh = Meshes(
+            verts=[verts],
+            faces=[faces],
+            textures=textures
+        )
+        points = trimesh.Trimesh(vertices=verts.numpy(
+        ), faces=faces.numpy()).sample(self.nb_points, False)
+        points = torch.from_numpy(points).to(torch.float)
+        points = torch_center_and_normalize(points, p=self.dset_norm)
+        return self.label_by_number[label_str], mesh, points
+
 class ScanObjectNN(torch.utils.data.Dataset):
     """
     This class loads ScanObjectNN from a given directory into a Dataset object.

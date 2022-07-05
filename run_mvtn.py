@@ -33,7 +33,7 @@ from models.renderer import *
 
 
 from torch.utils.tensorboard import SummaryWriter
-from custom_dataset import ModelNet40, collate_fn, ShapeNetCore, ScanObjectNN
+from custom_dataset import ModelNet40, collate_fn, ShapeNetCore, ScanObjectNN, Pix3D
 from rotationNet.mvt_rotnet import RotationNet, AverageMeter, my_accuracy
 from viewGCN.tools.Trainer_mvt import ModelNetTrainer_mvt
 
@@ -44,12 +44,12 @@ PLOT_SAMPLE_NBS = [242, 7, 549, 112, 34]
 
 parser = argparse.ArgumentParser(description='MVTN-PyTorch')
 
-parser.add_argument('--data_dir', required=True,  help='path to 3D dataset')
+parser.add_argument('--data_dir', default= "/mnt/d/My_things/Datasets/Pix3D/",  help='path to 3D dataset')
 parser.add_argument('--run_mode', '-rmode',  default="train", choices=["train", "test_cls", "test_retr", "test_rot", "test_occ"],
                     help='The mode of running the code: train, test classification, test retrieval, test rotation robustness, or test occlusion robustness. You have to train before testing')
 parser.add_argument('--mvnetwork', '-m',  default="mvcnn", choices=["mvcnn", "rotnet", "viewgcn"],
                     help='the type of multi-view network used:')
-parser.add_argument('--nb_views', type=int,
+parser.add_argument('--nb_views', type=int, default=8,
                     help='number of views in the multi-view setup')
 parser.add_argument('--views_config', '-s',  default="circular", choices=["circular", "random", "learned_circular", "learned_direct", "spherical", "learned_spherical", "learned_random", "learned_transfer", "custom"],
                     help='the selection type of views ')
@@ -63,8 +63,8 @@ parser.add_argument('--object_color', '-clr',  default="white", choices=["white"
                     help='the selection type of views ')
 parser.add_argument('--epochs', default=100, type=int,
                     help='number of total epochs to run (default: 100)')
-parser.add_argument('--batch_size', '-b', default=20, type=int,
-                    help='mini-batch size (default: 20)')
+parser.add_argument('--batch_size', '-b', default=10, type=int,
+                    help='mini-batch size (default: 1)')
 parser.add_argument('-r', '--resume', dest='resume',
                     action='store_true', help='continue training from the `setup[weights_file] checkpoint ')
 parser.add_argument("--viewgcn_phase", default="all", choices=["all", "first", "second"],
@@ -93,12 +93,26 @@ if "modelnet" in setup["data_dir"].lower():
     classes = dset_train.classes
 
 elif "shapenetcore" in setup["data_dir"].lower():
+    # dset_train = ShapeNetCore(setup["data_dir"], ("train",), setup["nb_points"], load_textures=False,
+    #                           dset_norm=setup["dset_norm"], simplified_mesh=setup["simplified_mesh"])
+    # dset_val = ShapeNetCore(setup["data_dir"], ("test",), setup["nb_points"], load_textures=False,
+                            # dset_norm=setup["dset_norm"], simplified_mesh=setup["simplified_mesh"])
     dset_train = ShapeNetCore(setup["data_dir"], ("train",), setup["nb_points"], load_textures=False,
-                              dset_norm=setup["dset_norm"], simplified_mesh=setup["simplified_mesh"])
+                              dset_norm=setup["dset_norm"], simplified_mesh=False)
     dset_val = ShapeNetCore(setup["data_dir"], ("test",), setup["nb_points"], load_textures=False,
-                            dset_norm=setup["dset_norm"], simplified_mesh=setup["simplified_mesh"])
+                            dset_norm=setup["dset_norm"], simplified_mesh=False)
 
     classes = dset_val.classes
+    
+
+elif "pix3d" in setup["data_dir"].lower():
+    dset_train = Pix3D(setup["data_dir"], "train", nb_points=setup["nb_points"], load_textures=False,
+                              dset_norm=setup["dset_norm"], simplified_mesh=False)
+    dset_val = Pix3D(setup["data_dir"], "test", nb_points=setup["nb_points"], load_textures=False,
+                            dset_norm=setup["dset_norm"], simplified_mesh=False)
+    classes = dset_val.classes
+    
+    
 elif "scanobjectnn" in setup["data_dir"].lower():
     dset_train = ScanObjectNN(setup["data_dir"], 'train',  setup["nb_points"],
                               variant=setup["dset_variant"], dset_norm=setup["dset_norm"])
@@ -106,11 +120,13 @@ elif "scanobjectnn" in setup["data_dir"].lower():
                             variant=setup["dset_variant"], dset_norm=setup["dset_norm"])
     classes = dset_train.classes
 
+# dset_train.__getitem__(0)
 train_loader = DataLoader(dset_train, batch_size=setup["batch_size"],
                           shuffle=True, num_workers=6, collate_fn=collate_fn, drop_last=True)
 
 val_loader = DataLoader(dset_val, batch_size=int(setup["batch_size"]),
                         shuffle=False, num_workers=6, collate_fn=collate_fn)
+
 
 print("classes nb:", len(classes), "number of train models: ", len(
     dset_train), "number of test models: ", len(dset_val), classes)
@@ -187,7 +203,8 @@ def train(data_loader, models_bag, setup):
             rendered_images, setup["view_reg"], setup["augment_training"], setup["crop_ratio"])
         targets = targets.cuda()
         targets = Variable(targets)
-        outputs = models_bag["mvnetwork"](rendered_images)[0]
+        
+        outputs = models_bag["mvnetwork"](rendered_images)[0].view(c_batch_size, -1)
         loss = criterion(outputs, targets)
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
