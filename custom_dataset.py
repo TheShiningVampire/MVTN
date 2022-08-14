@@ -147,7 +147,7 @@ class ModelNet40(Dataset):
 
 
 def collate_fn(batch):
-    r"""Puts each data field into a tensor with outer dimension batch size"""
+    """Puts each data field into a tensor with outer dimension batch size"""
 
     elem = batch[0]
     elem_type = type(elem)
